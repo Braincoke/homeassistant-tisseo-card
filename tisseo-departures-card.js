@@ -3317,7 +3317,7 @@ window.customCards.push({
   name: 'Tisseo Departures Card',
   description: 'Display Tisseo transit departures for one or more stops',
   preview: true,
-  documentationURL: 'https://github.com/your-org/homeassistant-tisseo-cards',
+  documentationURL: 'https://github.com/Braincoke/homeassistant-tisseo-card',
 });
 
 window.customCards.push({
