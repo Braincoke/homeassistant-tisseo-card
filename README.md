@@ -4,6 +4,9 @@ Cartes Lovelace personnalisées pour afficher les données de transport [Tisseo]
 
 README in English: [README_en.md](README_en.md)
 
+<img width="1150" height="355" alt="Screenshot 2026-02-23 at 22 43 48" src="https://github.com/user-attachments/assets/76e69ff6-7ffe-4db6-a71b-781d54556624" />
+
+
 ## Cartes disponibles
 
 ### 1. Carte Départs Temps Réel (`tisseo-departures-card`)
