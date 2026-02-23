@@ -46,6 +46,16 @@ entity: sensor.tisseo_metro_b_jean_jaures_ramonville_planned_departures
 title: Tomorrow morning
 ```
 
+Multiple entities:
+
+```yaml
+type: custom:tisseo-planned-departures-card
+title: Tomorrow morning
+entities:
+  - sensor.tisseo_bus_21_a_planned_departures
+  - sensor.tisseo_tram_t1_b_planned_departures
+```
+
 ## Features
 
 - Official Tisseo line colors (`line_color`, `line_text_color`)
@@ -116,7 +126,8 @@ Notes:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `entity` | string | required | A `_planned_departures` sensor entity |
+| `entity` | string | optional | One `_planned_departures` sensor entity |
+| `entities` | array | optional | List of `_planned_departures` sensors |
 | `title` | string | `""` | Optional card title |
 | `card_size` | string | `S` | `S`, `M`, `L`, `XL` |
 | `max_departures` | number | `8` | Max departures shown (1-40) |
@@ -124,6 +135,11 @@ Notes:
 | `show_window` | boolean | `true` | Show queried time window |
 | `show_realtime` | boolean | `true` | Show real-time/scheduled indicator |
 | `tap_action` | object | `{action: 'more-info'}` | Tap action |
+
+Notes:
+- Provide either `entity` or `entities`.
+- Departures are merged and sorted in chronological order across all selected entities.
+- The displayed window is computed as min(`window_start`) to max(`window_end`) across selected entities.
 
 ## Requirements
 

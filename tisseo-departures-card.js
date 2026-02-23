@@ -71,6 +71,7 @@ const TRANSLATIONS = {
     planned_no_data: 'Aucune donnée planifiée disponible',
     planned_no_departures: 'Aucun départ dans cette fenêtre',
     ed_planned_entity: 'Entité planifiée',
+    ed_planned_entities: 'Entités planifiées',
     ed_max_departures: 'Nombre maximum de départs',
     ed_show_window: 'Afficher la fenêtre horaire',
   },
@@ -134,6 +135,7 @@ const TRANSLATIONS = {
     planned_no_data: 'No planned data available',
     planned_no_departures: 'No departures in this window',
     ed_planned_entity: 'Planned entity',
+    ed_planned_entities: 'Planned entities',
     ed_max_departures: 'Maximum departures',
     ed_show_window: 'Show time window',
   },
@@ -2128,7 +2130,7 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      entity: '',
+      entities: [],
       title: '',
       card_size: 'S',
       max_departures: 8,
@@ -2140,8 +2142,13 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error('Please define entity');
+    const providedEntities = Array.isArray(config.entities) ? config.entities.filter(Boolean) : [];
+    const normalizedEntities = providedEntities.length > 0
+      ? providedEntities
+      : (config.entity ? [config.entity] : []);
+
+    if (normalizedEntities.length === 0) {
+      throw new Error('Please define at least one entity');
     }
 
     this._config = {
@@ -2153,15 +2160,30 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
       show_realtime: true,
       tap_action: { action: 'more-info' },
       ...config,
+      entities: normalizedEntities,
+      entity: normalizedEntities[0],
     };
+  }
+
+  _getEntityIds() {
+    if (Array.isArray(this._config?.entities) && this._config.entities.length > 0) {
+      return this._config.entities;
+    }
+    return this._config?.entity ? [this._config.entity] : [];
   }
 
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
 
-    if (oldHass && this._config?.entity) {
-      if (oldHass.states[this._config.entity] === hass.states[this._config.entity]) {
+    if (oldHass) {
+      const entityIds = this._getEntityIds();
+      if (entityIds.length > 0) {
+        const changed = entityIds.some((eid) => oldHass.states[eid] !== hass.states[eid]);
+        if (!changed) {
+          return;
+        }
+      } else {
         return;
       }
     }
@@ -2172,46 +2194,92 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
   _updateCard() {
     if (!this._hass || !this._config) return;
 
-    const entityId = this._config.entity;
-    const entity = this._hass.states[entityId];
-    if (!entity) {
-      this._renderError(t(this._hass, 'error_entity_not_found', entityId));
+    const entityIds = this._getEntityIds();
+    if (entityIds.length === 0) {
+      this._renderError('No entities configured');
       return;
     }
 
-    if (entity.state === 'unavailable' || entity.state === 'unknown') {
+    const rows = [];
+    const stopNames = [];
+    const windowStarts = [];
+    const windowEnds = [];
+    let hasLoading = false;
+
+    for (const entityId of entityIds) {
+      const entity = this._hass.states[entityId];
+      if (!entity) {
+        continue;
+      }
+
+      if (entity.state === 'unavailable' || entity.state === 'unknown') {
+        hasLoading = true;
+        continue;
+      }
+
+      const attrs = entity.attributes || {};
+      const departures = Array.isArray(attrs.departures) ? attrs.departures : [];
+      const stopName = attrs.stop_name || entity.attributes?.friendly_name || '';
+      if (stopName) stopNames.push(stopName);
+
+      if (attrs.window_start) {
+        const startDate = new Date(attrs.window_start);
+        if (!isNaN(startDate.getTime())) windowStarts.push(startDate);
+      }
+      if (attrs.window_end) {
+        const endDate = new Date(attrs.window_end);
+        if (!isNaN(endDate.getTime())) windowEnds.push(endDate);
+      }
+
+      for (const dep of departures) {
+        const depDate = new Date(dep.departure_time);
+        if (isNaN(depDate.getTime())) continue;
+
+        const transportType = getTransportType(entityId, { departures: [dep] });
+        const line = dep.line_short_name || getLineFromEntity(entityId);
+        const lineColor = getLineColor(transportType, line, dep.line_color || null);
+        const lineTextColor = dep.line_text_color || getContrastColor(lineColor);
+        const dt = formatPlannedDateTimeParts(dep.departure_time, this._hass);
+
+        rows.push({
+          entityId,
+          transportType,
+          icon: getTransportIcon(transportType),
+          line,
+          lineColor,
+          lineTextColor,
+          destination: dep.destination || '',
+          stopName,
+          datetimeDate: dt.date,
+          datetimeTime: dt.time,
+          departureTs: depDate.getTime(),
+          isRealtime: dep.is_realtime === true,
+        });
+      }
+    }
+
+    if (rows.length === 0 && hasLoading) {
       this._renderLoading();
       return;
     }
 
-    const attrs = entity.attributes || {};
-    const departures = Array.isArray(attrs.departures) ? attrs.departures : [];
+    rows.sort((a, b) => a.departureTs - b.departureTs);
     const maxRows = Math.max(1, this._config.max_departures || 8);
-    const planned = departures.slice(0, maxRows).map((dep) => {
-      const transportType = getTransportType(entityId, { departures: [dep] });
-      const line = dep.line_short_name || getLineFromEntity(entityId);
-      const lineColor = getLineColor(transportType, line, dep.line_color || null);
-      const lineTextColor = dep.line_text_color || getContrastColor(lineColor);
-      const dt = formatPlannedDateTimeParts(dep.departure_time, this._hass);
-      return {
-        transportType,
-        icon: getTransportIcon(transportType),
-        line,
-        lineColor,
-        lineTextColor,
-        destination: dep.destination || '',
-        datetimeDate: dt.date,
-        datetimeTime: dt.time,
-        isRealtime: dep.is_realtime === true,
-      };
-    });
+    const planned = rows.slice(0, maxRows);
 
-    const stopName = attrs.stop_name || entity.attributes?.friendly_name || '';
-    const windowStart = attrs.window_start || null;
-    const windowEnd = attrs.window_end || null;
+    const uniqueStopNames = [...new Set(stopNames)];
+    const stopName = uniqueStopNames.length === 1 ? uniqueStopNames[0] : '';
+    const windowStart = windowStarts.length > 0
+      ? new Date(Math.min(...windowStarts.map((d) => d.getTime()))).toISOString()
+      : null;
+    const windowEnd = windowEnds.length > 0
+      ? new Date(Math.max(...windowEnds.map((d) => d.getTime()))).toISOString()
+      : null;
+
     this._render({
-      entityId,
+      entityIds,
       stopName,
+      isMultiEntity: entityIds.length > 1,
       windowStart,
       windowEnd,
       departures: planned,
@@ -2263,6 +2331,7 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
     const showWindow = this._config.show_window !== false;
     const showRealtime = this._config.show_realtime !== false;
     const hasTapAction = this._config.tap_action?.action !== 'none';
+    const isMulti = data.isMultiEntity === true;
 
     const windowStartParts = formatPlannedDateTimeParts(data.windowStart, this._hass);
     const windowEndParts = formatPlannedDateTimeParts(data.windowEnd, this._hass);
@@ -2333,6 +2402,14 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
           overflow: hidden;
           text-overflow: ellipsis;
         }
+        .stop-label {
+          font-size: ${Math.max(11, sz.destinationFontSize - 1)}px;
+          color: var(--secondary-text-color);
+          opacity: 0.9;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
         .datetime {
           display: flex;
           align-items: baseline;
@@ -2367,16 +2444,17 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
       </style>
       <ha-card>
         ${this._config.title ? `<div class="title">${this._config.title}</div>` : ''}
-        ${showStopName && data.stopName ? `<div class="title">${data.stopName}</div>` : ''}
+        ${showStopName && !isMulti && data.stopName ? `<div class="title">${data.stopName}</div>` : ''}
         ${showWindow && windowLabel ? `<div class="window"><strong>${t(this._hass, 'planned_window')}:</strong> ${windowLabel}</div>` : ''}
         ${data.departures.length > 0 ? data.departures.map(dep => `
-          <div class="row">
+          <div class="row" data-entity="${dep.entityId}">
             <ha-icon class="transport-icon" icon="${dep.icon}"></ha-icon>
             <div class="line-badge ${dep.transportType}" style="background-color: ${dep.lineColor}; color: ${dep.lineTextColor}">
               ${dep.line}
             </div>
             <div class="info">
               ${dep.destination ? `<div class="destination">→ ${dep.destination}</div>` : ''}
+              ${showStopName && isMulti && dep.stopName ? `<div class="stop-label">${dep.stopName}</div>` : ''}
             </div>
             <div class="datetime">
               <span class="datetime-date">${dep.datetimeDate}</span>
@@ -2389,8 +2467,14 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
     `;
 
     if (hasTapAction) {
-      const card = this.shadowRoot.querySelector('ha-card');
-      handleTapAction(card, this._hass, this._config, data.entityId);
+      if (data.entityIds.length === 1) {
+        const card = this.shadowRoot.querySelector('ha-card');
+        handleTapAction(card, this._hass, this._config, data.entityIds[0]);
+      } else {
+        this.shadowRoot.querySelectorAll('.row[data-entity]').forEach((row) => {
+          handleTapAction(row, this._hass, this._config, row.dataset.entity);
+        });
+      }
     }
   }
 
@@ -2436,6 +2520,9 @@ class TisseoPlannedDeparturesCardEditor extends HTMLElement {
     const entities = Object.keys(this._hass.states)
       .filter((eid) => eid.startsWith('sensor.tisseo_') && eid.endsWith('_planned_departures'))
       .sort();
+    const selectedEntities = Array.isArray(this._config?.entities) && this._config.entities.length > 0
+      ? this._config.entities
+      : (this._config?.entity ? [this._config.entity] : []);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -2452,6 +2539,30 @@ class TisseoPlannedDeparturesCardEditor extends HTMLElement {
         }
         .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
         .checkbox-row input { width: auto; }
+        .entity-list {
+          max-height: 220px;
+          overflow-y: auto;
+          border: 1px solid var(--divider-color, #ccc);
+          border-radius: 4px;
+          background: var(--card-background-color, #fff);
+        }
+        .entity-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          border-bottom: 1px solid var(--divider-color, #eee);
+        }
+        .entity-item:last-child { border-bottom: none; }
+        .entity-item label {
+          margin: 0;
+          font-weight: 400;
+          flex: 1;
+          cursor: pointer;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
       </style>
 
       <div class="form-row">
@@ -2460,15 +2571,19 @@ class TisseoPlannedDeparturesCardEditor extends HTMLElement {
       </div>
 
       <div class="form-row">
-        <label>${t(this._hass, 'ed_planned_entity')}</label>
-        <select id="entity">
-          <option value="">--</option>
+        <label>${t(this._hass, 'ed_planned_entities')}</label>
+        <div class="entity-list">
           ${entities.map((eid) => {
-            const selected = this._config?.entity === eid ? 'selected' : '';
+            const checked = selectedEntities.includes(eid) ? 'checked' : '';
             const name = this._hass.states[eid]?.attributes?.friendly_name || eid;
-            return `<option value="${eid}" ${selected}>${name} (${eid})</option>`;
+            return `
+              <div class="entity-item">
+                <input class="entity-checkbox" type="checkbox" id="planned_${eid.replace(/[.]/g, '_')}" value="${eid}" ${checked}>
+                <label for="planned_${eid.replace(/[.]/g, '_')}" title="${eid}">${name}</label>
+              </div>
+            `;
           }).join('')}
-        </select>
+        </div>
       </div>
 
       <div class="form-row">
@@ -2522,10 +2637,13 @@ class TisseoPlannedDeparturesCardEditor extends HTMLElement {
   }
 
   _valueChanged() {
+    const entities = Array.from(this.shadowRoot.querySelectorAll('.entity-checkbox:checked'))
+      .map((el) => el.value);
     const config = {
       ...this._config,
       title: this.shadowRoot.getElementById('title')?.value || '',
-      entity: this.shadowRoot.getElementById('entity')?.value || '',
+      entities,
+      entity: entities[0] || '',
       card_size: this.shadowRoot.getElementById('card_size')?.value || 'S',
       max_departures: parseInt(this.shadowRoot.getElementById('max_departures')?.value) || 8,
       tap_action: { action: this.shadowRoot.getElementById('tap_action')?.value || 'more-info' },
