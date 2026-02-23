@@ -36,6 +36,16 @@ location_entity: person.me
 max_distance: 500
 ```
 
+### 3. Planned Departures Card (`tisseo-planned-departures-card`)
+
+Displays planned departures (future window) with **one row per departure**, showing **date and time**.
+
+```yaml
+type: custom:tisseo-planned-departures-card
+entity: sensor.tisseo_metro_b_jean_jaures_ramonville_planned_departures
+title: Tomorrow morning
+```
+
 ## Features
 
 - Official Tisseo line colors (`line_color`, `line_text_color`)
@@ -46,7 +56,8 @@ max_distance: 500
 - Card sizes: `S`, `M`, `L`, `XL`
 - Manual refresh button (departures card)
 - Last-updated footer (optional)
-- Visual editor for both cards
+- Visual editor for all cards
+- Dedicated planned-departures layout (date + time per row)
 
 ## Installation
 
@@ -100,6 +111,19 @@ Notes:
 | `show_distance` | boolean | `true` | Show walking distance |
 | `auto_refresh` | boolean | `true` | Auto-refresh nearby results |
 | `refresh_interval` | number | `60` | Refresh interval in seconds |
+
+### Planned Departures Card
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `entity` | string | required | A `_planned_departures` sensor entity |
+| `title` | string | `""` | Optional card title |
+| `card_size` | string | `S` | `S`, `M`, `L`, `XL` |
+| `max_departures` | number | `8` | Max departures shown (1-40) |
+| `show_stop_name` | boolean | `true` | Show stop name |
+| `show_window` | boolean | `true` | Show queried time window |
+| `show_realtime` | boolean | `true` | Show real-time/scheduled indicator |
+| `tap_action` | object | `{action: 'more-info'}` | Tap action |
 
 ## Requirements
 

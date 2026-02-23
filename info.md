@@ -6,6 +6,7 @@ Custom Lovelace cards for Tisseo transit data in Home Assistant.
 
 - `tisseo-departures-card`: real-time departures for one stop or a list of stops
 - `tisseo-nearby-stops-card`: nearby stops from your current location
+- `tisseo-planned-departures-card`: planned departures with date and time per row
 
 ## Features
 

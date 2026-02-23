@@ -2,10 +2,10 @@
  * Tisseo Departures Card
  * A custom Lovelace card for displaying Tisseo transit departures
  *
- * @version 1.14.0
+ * @version 1.15.0
  */
 
-const CARD_VERSION = '1.14.0';
+const CARD_VERSION = '1.15.0';
 
 // ============================================
 // LOCALIZATION
@@ -67,6 +67,12 @@ const TRANSLATIONS = {
     ed_entities_hint: 'Ajoutez les entités de départ à afficher',
     ed_add_entity: 'Ajouter une entité',
     ed_remove: 'Supprimer',
+    planned_window: 'Fenêtre',
+    planned_no_data: 'Aucune donnée planifiée disponible',
+    planned_no_departures: 'Aucun départ dans cette fenêtre',
+    ed_planned_entity: 'Entité planifiée',
+    ed_max_departures: 'Nombre maximum de départs',
+    ed_show_window: 'Afficher la fenêtre horaire',
   },
   en: {
     just_now: 'just now',
@@ -124,6 +130,12 @@ const TRANSLATIONS = {
     ed_entities_hint: 'Add departure entities to display',
     ed_add_entity: 'Add entity',
     ed_remove: 'Remove',
+    planned_window: 'Window',
+    planned_no_data: 'No planned data available',
+    planned_no_departures: 'No departures in this window',
+    ed_planned_entity: 'Planned entity',
+    ed_max_departures: 'Maximum departures',
+    ed_show_window: 'Show time window',
   },
 };
 
@@ -453,6 +465,28 @@ function formatLastUpdated(isoString, hass) {
     }
   } catch (e) {
     return null;
+  }
+}
+
+function formatPlannedDateTimeParts(isoString, hass) {
+  if (!isoString) return { date: '--', time: '--' };
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return { date: '--', time: '--' };
+    const locale = getLocale(hass) === 'fr' ? 'fr-FR' : 'en-US';
+    const dateLabel = new Intl.DateTimeFormat(locale, {
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+    }).format(date);
+    const timeLabel = new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date);
+    return { date: dateLabel, time: timeLabel };
+  } catch (e) {
+    return { date: '--', time: '--' };
   }
 }
 
@@ -2080,6 +2114,436 @@ class TisseoDeparturesCardEditor extends HTMLElement {
 }
 
 // ============================================
+// PLANNED DEPARTURES CARD
+// ============================================
+class TisseoPlannedDeparturesCard extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+  }
+
+  static getConfigElement() {
+    return document.createElement('tisseo-planned-departures-card-editor');
+  }
+
+  static getStubConfig() {
+    return {
+      entity: '',
+      title: '',
+      card_size: 'S',
+      max_departures: 8,
+      show_stop_name: true,
+      show_window: true,
+      show_realtime: true,
+      tap_action: { action: 'more-info' },
+    };
+  }
+
+  setConfig(config) {
+    if (!config.entity) {
+      throw new Error('Please define entity');
+    }
+
+    this._config = {
+      title: '',
+      card_size: 'S',
+      max_departures: 8,
+      show_stop_name: true,
+      show_window: true,
+      show_realtime: true,
+      tap_action: { action: 'more-info' },
+      ...config,
+    };
+  }
+
+  set hass(hass) {
+    const oldHass = this._hass;
+    this._hass = hass;
+
+    if (oldHass && this._config?.entity) {
+      if (oldHass.states[this._config.entity] === hass.states[this._config.entity]) {
+        return;
+      }
+    }
+
+    this._updateCard();
+  }
+
+  _updateCard() {
+    if (!this._hass || !this._config) return;
+
+    const entityId = this._config.entity;
+    const entity = this._hass.states[entityId];
+    if (!entity) {
+      this._renderError(t(this._hass, 'error_entity_not_found', entityId));
+      return;
+    }
+
+    if (entity.state === 'unavailable' || entity.state === 'unknown') {
+      this._renderLoading();
+      return;
+    }
+
+    const attrs = entity.attributes || {};
+    const departures = Array.isArray(attrs.departures) ? attrs.departures : [];
+    const maxRows = Math.max(1, this._config.max_departures || 8);
+    const planned = departures.slice(0, maxRows).map((dep) => {
+      const transportType = getTransportType(entityId, { departures: [dep] });
+      const line = dep.line_short_name || getLineFromEntity(entityId);
+      const lineColor = getLineColor(transportType, line, dep.line_color || null);
+      const lineTextColor = dep.line_text_color || getContrastColor(lineColor);
+      const dt = formatPlannedDateTimeParts(dep.departure_time, this._hass);
+      return {
+        transportType,
+        icon: getTransportIcon(transportType),
+        line,
+        lineColor,
+        lineTextColor,
+        destination: dep.destination || '',
+        datetimeDate: dt.date,
+        datetimeTime: dt.time,
+        isRealtime: dep.is_realtime === true,
+      };
+    });
+
+    const stopName = attrs.stop_name || entity.attributes?.friendly_name || '';
+    const windowStart = attrs.window_start || null;
+    const windowEnd = attrs.window_end || null;
+    this._render({
+      entityId,
+      stopName,
+      windowStart,
+      windowEnd,
+      departures: planned,
+    });
+  }
+
+  _renderLoading() {
+    const sz = getSizeConfig(this._config.card_size);
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-card { padding: 0; overflow: hidden; }
+        ${SKELETON_CSS}
+        .row {
+          display: flex;
+          align-items: center;
+          padding: ${sz.rowPadding};
+          gap: ${sz.rowGap}px;
+          border-bottom: 1px solid var(--divider-color, #e0e0e0);
+        }
+        .row:last-child { border-bottom: none; }
+        .skeleton-icon { width: ${sz.iconSize}px; height: ${sz.iconSize}px; }
+        .skeleton-badge { width: ${sz.badgeSize}px; height: ${sz.badgeSize}px; border-radius: 6px; }
+        .skeleton-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .skeleton-title { width: 50%; height: 14px; }
+        .skeleton-sub { width: 35%; height: 12px; }
+        .skeleton-time { width: 90px; height: 18px; }
+      </style>
+      <ha-card>
+        ${this._config.title ? `<div style="padding: 16px 16px 8px; font-size: ${sz.stopNameFontSize + 2}px; font-weight: 500;">${this._config.title}</div>` : ''}
+        ${Array.from({ length: 3 }).map(() => `
+          <div class="row">
+            <div class="skeleton skeleton-icon skeleton-circle"></div>
+            <div class="skeleton skeleton-badge"></div>
+            <div class="skeleton-info">
+              <div class="skeleton skeleton-title"></div>
+              <div class="skeleton skeleton-sub"></div>
+            </div>
+            <div class="skeleton skeleton-time"></div>
+          </div>
+        `).join('')}
+      </ha-card>
+    `;
+  }
+
+  _render(data) {
+    const sz = getSizeConfig(this._config.card_size);
+    const showStopName = this._config.show_stop_name !== false;
+    const showWindow = this._config.show_window !== false;
+    const showRealtime = this._config.show_realtime !== false;
+    const hasTapAction = this._config.tap_action?.action !== 'none';
+
+    const windowStartParts = formatPlannedDateTimeParts(data.windowStart, this._hass);
+    const windowEndParts = formatPlannedDateTimeParts(data.windowEnd, this._hass);
+    const windowLabel = data.windowStart && data.windowEnd
+      ? `${windowStartParts.date} ${windowStartParts.time} - ${windowEndParts.time}`
+      : null;
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-card { padding: 0; overflow: hidden; ${hasTapAction ? 'cursor: pointer;' : ''} }
+        .title {
+          padding: 16px 16px 8px;
+          font-size: ${sz.stopNameFontSize + 2}px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+        }
+        .window {
+          padding: 0 16px 10px;
+          font-size: ${sz.destinationFontSize}px;
+          color: var(--secondary-text-color);
+        }
+        .window strong { color: var(--primary-text-color); }
+        .row {
+          display: flex;
+          align-items: center;
+          padding: ${sz.rowPadding};
+          gap: ${sz.rowGap}px;
+          border-top: 1px solid var(--divider-color, #e0e0e0);
+        }
+        .transport-icon {
+          --mdc-icon-size: ${sz.iconSize}px;
+          color: var(--secondary-text-color);
+          flex-shrink: 0;
+        }
+        .line-badge {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: ${sz.badgeSize}px;
+          height: ${sz.badgeSize}px;
+          padding: ${sz.badgePadding};
+          border-radius: 6px;
+          font-weight: bold;
+          font-size: ${sz.badgeFontSize}px;
+          flex-shrink: 0;
+        }
+        .line-badge.metro { border-radius: 50%; }
+        .info {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: ${sz.infoGap}px;
+        }
+        .stop-name {
+          font-size: ${sz.stopNameFontSize}px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .destination {
+          font-size: ${sz.destinationFontSize}px;
+          color: var(--secondary-text-color);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .datetime {
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+          color: var(--primary-text-color);
+          font-weight: 600;
+          flex-shrink: 0;
+          white-space: nowrap;
+        }
+        .datetime-date {
+          font-size: ${Math.round(sz.timeFontSize * 0.72)}px;
+          color: var(--secondary-text-color);
+          text-transform: capitalize;
+        }
+        .datetime-time {
+          font-size: ${Math.round(sz.timeNextFontSize * 0.82)}px;
+          color: var(--primary-text-color);
+        }
+        .realtime-indicator {
+          width: ${sz.realtimeSize}px;
+          height: ${sz.realtimeSize}px;
+          border-radius: 50%;
+          background-color: #4caf50;
+          flex-shrink: 0;
+        }
+        .realtime-indicator.scheduled { background-color: #9e9e9e; }
+        .empty {
+          padding: 16px;
+          color: var(--secondary-text-color);
+          font-size: ${sz.destinationFontSize}px;
+        }
+      </style>
+      <ha-card>
+        ${this._config.title ? `<div class="title">${this._config.title}</div>` : ''}
+        ${showStopName && data.stopName ? `<div class="title">${data.stopName}</div>` : ''}
+        ${showWindow && windowLabel ? `<div class="window"><strong>${t(this._hass, 'planned_window')}:</strong> ${windowLabel}</div>` : ''}
+        ${data.departures.length > 0 ? data.departures.map(dep => `
+          <div class="row">
+            <ha-icon class="transport-icon" icon="${dep.icon}"></ha-icon>
+            <div class="line-badge ${dep.transportType}" style="background-color: ${dep.lineColor}; color: ${dep.lineTextColor}">
+              ${dep.line}
+            </div>
+            <div class="info">
+              ${dep.destination ? `<div class="destination">→ ${dep.destination}</div>` : ''}
+            </div>
+            <div class="datetime">
+              <span class="datetime-date">${dep.datetimeDate}</span>
+              <span class="datetime-time">${dep.datetimeTime}</span>
+            </div>
+            ${showRealtime ? `<div class="realtime-indicator ${dep.isRealtime ? '' : 'scheduled'}" title="${dep.isRealtime ? 'Real-time' : 'Scheduled'}"></div>` : ''}
+          </div>
+        `).join('') : `<div class="empty">${t(this._hass, 'planned_no_departures')}</div>`}
+      </ha-card>
+    `;
+
+    if (hasTapAction) {
+      const card = this.shadowRoot.querySelector('ha-card');
+      handleTapAction(card, this._hass, this._config, data.entityId);
+    }
+  }
+
+  _renderError(message) {
+    this.shadowRoot.innerHTML = `
+      <ha-card>
+        <div style="padding: 16px; color: var(--error-color, #db4437);">
+          <ha-icon icon="mdi:alert-circle"></ha-icon>
+          ${message}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  getCardSize() {
+    const sizeMap = { S: 2, M: 3, L: 4, XL: 5 };
+    return sizeMap[this._config?.card_size] || 2;
+  }
+}
+
+// ============================================
+// PLANNED CARD EDITOR
+// ============================================
+class TisseoPlannedDeparturesCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+  }
+
+  setConfig(config) {
+    this._config = config;
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _render() {
+    if (!this._hass) return;
+
+    const entities = Object.keys(this._hass.states)
+      .filter((eid) => eid.startsWith('sensor.tisseo_') && eid.endsWith('_planned_departures'))
+      .sort();
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        .form-row { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 4px; font-weight: 500; }
+        select, input[type="text"], input[type="number"] {
+          width: 100%;
+          padding: 8px;
+          border: 1px solid var(--divider-color, #ccc);
+          border-radius: 4px;
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          box-sizing: border-box;
+        }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .checkbox-row input { width: auto; }
+      </style>
+
+      <div class="form-row">
+        <label>${t(this._hass, 'ed_title')}</label>
+        <input type="text" id="title" value="${this._config?.title || ''}" placeholder="Tomorrow morning departures">
+      </div>
+
+      <div class="form-row">
+        <label>${t(this._hass, 'ed_planned_entity')}</label>
+        <select id="entity">
+          <option value="">--</option>
+          ${entities.map((eid) => {
+            const selected = this._config?.entity === eid ? 'selected' : '';
+            const name = this._hass.states[eid]?.attributes?.friendly_name || eid;
+            return `<option value="${eid}" ${selected}>${name} (${eid})</option>`;
+          }).join('')}
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>${t(this._hass, 'ed_card_size')}</label>
+        <select id="card_size">
+          <option value="S" ${(this._config?.card_size || 'S') === 'S' ? 'selected' : ''}>S</option>
+          <option value="M" ${this._config?.card_size === 'M' ? 'selected' : ''}>M</option>
+          <option value="L" ${this._config?.card_size === 'L' ? 'selected' : ''}>L</option>
+          <option value="XL" ${this._config?.card_size === 'XL' ? 'selected' : ''}>XL</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>${t(this._hass, 'ed_max_departures')}</label>
+        <input type="number" id="max_departures" min="1" max="40" value="${this._config?.max_departures || 8}">
+      </div>
+
+      <div class="form-row">
+        <label>Tap action</label>
+        <select id="tap_action">
+          <option value="more-info" ${(this._config?.tap_action?.action || 'more-info') === 'more-info' ? 'selected' : ''}>Show more info</option>
+          <option value="none" ${this._config?.tap_action?.action === 'none' ? 'selected' : ''}>None</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="checkbox-row">
+          <input type="checkbox" id="show_stop_name" ${this._config?.show_stop_name !== false ? 'checked' : ''}>
+          <label for="show_stop_name">${t(this._hass, 'ed_show_stop_name')}</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="checkbox-row">
+          <input type="checkbox" id="show_window" ${this._config?.show_window !== false ? 'checked' : ''}>
+          <label for="show_window">${t(this._hass, 'ed_show_window')}</label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="checkbox-row">
+          <input type="checkbox" id="show_realtime" ${this._config?.show_realtime !== false ? 'checked' : ''}>
+          <label for="show_realtime">${t(this._hass, 'ed_show_realtime')}</label>
+        </div>
+      </div>
+    `;
+
+    this.shadowRoot.querySelectorAll('input, select').forEach((el) => {
+      el.addEventListener('change', () => this._valueChanged());
+    });
+  }
+
+  _valueChanged() {
+    const config = {
+      ...this._config,
+      title: this.shadowRoot.getElementById('title')?.value || '',
+      entity: this.shadowRoot.getElementById('entity')?.value || '',
+      card_size: this.shadowRoot.getElementById('card_size')?.value || 'S',
+      max_departures: parseInt(this.shadowRoot.getElementById('max_departures')?.value) || 8,
+      tap_action: { action: this.shadowRoot.getElementById('tap_action')?.value || 'more-info' },
+      show_stop_name: this.shadowRoot.getElementById('show_stop_name')?.checked,
+      show_window: this.shadowRoot.getElementById('show_window')?.checked,
+      show_realtime: this.shadowRoot.getElementById('show_realtime')?.checked,
+    };
+
+    this._config = config;
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+}
+
+// ============================================
 // NEARBY STOPS CARD
 // ============================================
 class TisseoNearbyStopsCard extends HTMLElement {
@@ -2841,6 +3305,8 @@ class TisseoNearbyStopsCardEditor extends HTMLElement {
 // Register the cards
 customElements.define('tisseo-departures-card', TisseoDeparturesCard);
 customElements.define('tisseo-departures-card-editor', TisseoDeparturesCardEditor);
+customElements.define('tisseo-planned-departures-card', TisseoPlannedDeparturesCard);
+customElements.define('tisseo-planned-departures-card-editor', TisseoPlannedDeparturesCardEditor);
 customElements.define('tisseo-nearby-stops-card', TisseoNearbyStopsCard);
 customElements.define('tisseo-nearby-stops-card-editor', TisseoNearbyStopsCardEditor);
 
@@ -2851,13 +3317,20 @@ window.customCards.push({
   name: 'Tisseo Departures Card',
   description: 'Display Tisseo transit departures for one or more stops',
   preview: true,
-  documentationURL: 'https://github.com/braincoke/tisseo-departures-card',
+  documentationURL: 'https://github.com/your-org/homeassistant-tisseo-cards',
 });
 
 window.customCards.push({
   type: 'tisseo-nearby-stops-card',
   name: 'Tisseo Nearby Stops Card',
   description: 'Show nearby Tisseo stops based on your location',
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'tisseo-planned-departures-card',
+  name: 'Tisseo Planned Departures Card',
+  description: 'Display planned departures with date and time (one row per departure)',
   preview: true,
 });
 

@@ -38,6 +38,16 @@ location_entity: person.me
 max_distance: 500
 ```
 
+### 3. Carte Départs Planifiés (`tisseo-planned-departures-card`)
+
+Affiche les départs planifiés (fenêtre future) avec **une ligne par départ**, en affichant la **date et l'heure**.
+
+```yaml
+type: custom:tisseo-planned-departures-card
+entity: sensor.tisseo_metro_b_jean_jaures_ramonville_planned_departures
+title: Demain matin
+```
+
 ## Fonctionnalités
 
 - Couleurs officielles Tisseo (`line_color`, `line_text_color`)
@@ -48,7 +58,8 @@ max_distance: 500
 - Tailles de carte : `S`, `M`, `L`, `XL`
 - Bouton de rafraîchissement manuel (carte départs)
 - Horodatage de dernière mise à jour (optionnel)
-- Éditeur visuel pour les deux cartes
+- Éditeur visuel pour les trois cartes
+- Carte dédiée aux départs planifiés (date + heure par ligne)
 
 ## Installation
 
@@ -102,6 +113,19 @@ Notes :
 | `show_distance` | boolean | `true` | Afficher la distance à pied |
 | `auto_refresh` | boolean | `true` | Actualiser automatiquement |
 | `refresh_interval` | number | `60` | Intervalle de rafraîchissement en secondes |
+
+### Carte Départs Planifiés
+
+| Option | Type | Défaut | Description |
+|--------|------|--------|-------------|
+| `entity` | string | requis | Entité capteur `_planned_departures` |
+| `title` | string | `""` | Titre optionnel |
+| `card_size` | string | `S` | `S`, `M`, `L`, `XL` |
+| `max_departures` | number | `8` | Nombre maximal de départs affichés (1-40) |
+| `show_stop_name` | boolean | `true` | Afficher le nom de l'arrêt |
+| `show_window` | boolean | `true` | Afficher la fenêtre horaire demandée |
+| `show_realtime` | boolean | `true` | Afficher l'indicateur temps réel/théorique |
+| `tap_action` | object | `{action: 'more-info'}` | Action au clic |
 
 ## Prérequis
 
