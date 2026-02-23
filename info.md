@@ -1,6 +1,11 @@
-# Tisseo Departures Card
+# Tisseo Cards
 
-A custom Lovelace card for displaying Tisseo (Toulouse, France) public transit departures.
+Custom Lovelace cards for Tisseo transit data in Home Assistant.
+
+## Available cards
+
+- `tisseo-departures-card`: real-time departures for one stop or a list of stops
+- `tisseo-nearby-stops-card`: nearby stops from your current location
 
 ## Features
 
@@ -9,7 +14,6 @@ A custom Lovelace card for displaying Tisseo (Toulouse, France) public transit d
 - Real-time indicator dots
 - Imminent departure animations
 - Visual card editor
-- Multi-stop grid card
 
 ## Quick Start
 
