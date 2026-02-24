@@ -6,6 +6,20 @@ README in English: [README_en.md](README_en.md)
 
 <img width="1162" height="338" alt="Screenshot 2026-02-23 at 23 25 18" src="https://github.com/user-attachments/assets/0385a2c0-c361-4055-b252-262b043820ce" />
 
+## Avertissement legal
+
+- Ce projet est un plugin frontend communautaire **non officiel** pour Home Assistant.
+- Je n'ai **aucune affiliation** avec Tisseo.
+- Le nom "Tisseo" est utilise uniquement pour faciliter la decouverte du projet.
+- Si Tisseo souhaite que ce nom ne soit plus utilise dans ce depot, vous pouvez me contacter a : `braincoke+contact@protonmail.com`.
+
+## Licence des donnees
+
+Les donnees de transport Tisseo/Toulouse Metropole affichees par ces cartes sont soumises a la licence **ODbL 1.0**.
+
+- Texte de la licence ODbL : https://opendatacommons.org/licenses/odbl/1-0/
+- Conditions d'utilisation Toulouse Metropole : https://data.toulouse-metropole.fr/page/licence
+
 
 ## Cartes disponibles
 
@@ -166,4 +180,5 @@ Notes :
 
 ## Licence
 
-MIT
+- Code source : [MIT](LICENSE)
+- Donnees Open Data : [ODbL 1.0](LICENSE-ODbL-1.0.md)

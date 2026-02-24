@@ -2,6 +2,20 @@
 
 Custom Lovelace cards for [Tisseo](https://www.tisseo.fr/) (Toulouse, France) transit data in Home Assistant.
 
+## Legal Disclaimer
+
+- This is an **unofficial** community Home Assistant frontend plugin.
+- I have **zero affiliation** with Tisseo.
+- The "Tisseo" name is used in this repository for discoverability only.
+- If Tisseo decides this repository cannot use that name, they can contact me at: `braincoke+contact@protonmail.com`.
+
+## Data License
+
+Transit data displayed by these cards comes from Tisseo/Toulouse Metropole Open Data and is subject to **ODbL 1.0**.
+
+- ODbL full text: https://opendatacommons.org/licenses/odbl/1-0/
+- Toulouse Metropole license page: https://data.toulouse-metropole.fr/page/licence
+
 ## Available Cards
 
 ### 1. Real-Time Departures Card (`tisseo-departures-card`)
@@ -161,4 +175,5 @@ Notes:
 
 ## License
 
-MIT
+- Source code: [MIT](LICENSE)
+- Open Data: [ODbL 1.0](LICENSE-ODbL-1.0.md)
