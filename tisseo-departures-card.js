@@ -2219,7 +2219,7 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
 
       const attrs = entity.attributes || {};
       const departures = Array.isArray(attrs.departures) ? attrs.departures : [];
-      const stopName = attrs.stop_name || entity.attributes?.friendly_name || '';
+      const stopName = attrs.stop_name || attrs.stopName || '';
       if (stopName) stopNames.push(stopName);
 
       if (attrs.window_start) {
@@ -2331,7 +2331,6 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
     const showWindow = this._config.show_window !== false;
     const showRealtime = this._config.show_realtime !== false;
     const hasTapAction = this._config.tap_action?.action !== 'none';
-    const isMulti = data.isMultiEntity === true;
 
     const windowStartParts = formatPlannedDateTimeParts(data.windowStart, this._hass);
     const windowEndParts = formatPlannedDateTimeParts(data.windowEnd, this._hass);
@@ -2402,14 +2401,6 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
           overflow: hidden;
           text-overflow: ellipsis;
         }
-        .stop-label {
-          font-size: ${Math.max(11, sz.destinationFontSize - 1)}px;
-          color: var(--secondary-text-color);
-          opacity: 0.9;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
         .datetime {
           display: flex;
           align-items: baseline;
@@ -2444,7 +2435,6 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
       </style>
       <ha-card>
         ${this._config.title ? `<div class="title">${this._config.title}</div>` : ''}
-        ${showStopName && !isMulti && data.stopName ? `<div class="title">${data.stopName}</div>` : ''}
         ${showWindow && windowLabel ? `<div class="window"><strong>${t(this._hass, 'planned_window')}:</strong> ${windowLabel}</div>` : ''}
         ${data.departures.length > 0 ? data.departures.map(dep => `
           <div class="row" data-entity="${dep.entityId}">
@@ -2453,8 +2443,8 @@ class TisseoPlannedDeparturesCard extends HTMLElement {
               ${dep.line}
             </div>
             <div class="info">
+              ${showStopName && dep.stopName ? `<div class="stop-name">${dep.stopName}</div>` : ''}
               ${dep.destination ? `<div class="destination">→ ${dep.destination}</div>` : ''}
-              ${showStopName && isMulti && dep.stopName ? `<div class="stop-label">${dep.stopName}</div>` : ''}
             </div>
             <div class="datetime">
               <span class="datetime-date">${dep.datetimeDate}</span>
